@@ -10,8 +10,45 @@ router.register(r'tasks', views.TaskViewSet)          # New
 router.register(r'tags', views.TagViewSet)            # New
 router.register(r'companies', views.CompanyViewSet)   # New
 router.register(r'courses', views.CourseViewSet)
+router.register(r'whatsapp-campaigns', views.WhatsAppCampaignViewSet, basename='whatsapp-campaign')
+router.register(r'dashboard/smart_prompts', views.SmartDashboardViewSet, basename='smart-prompts')
+router.register(r'agent/dump_leads', views.AgentIngestionViewSet, basename='agent-dump')
+router.register(r'ai-logs', views.AIInteractionLogViewSet, basename='ai-logs')
+router.register(r'ai', views.AILeadViewSet, basename='ai-lead')
+router.register(r'verticals', views.VerticalViewSet)
+router.register(r'regions', views.RegionViewSet)
+router.register(r'ai-activity', views.AIActivityViewSet, basename='ai-activity')
+router.register(r'ai-docs', views.AIDocumentViewSet, basename='ai-docs')
+router.register(r'ai-chat', views.AIChatbotViewSet, basename='ai-chat')
+router.register(r'ai-alerts', views.AIAlertViewSet, basename='ai-alerts')
+router.register(r'ai-analytics', views.AIAnalyticsViewSet, basename='ai-analytics')
+router.register(r'ai-prospector', views.AIProspectorViewSet, basename='ai-prospector')
+router.register(r'product-lines', views.ProductLineViewSet)
+router.register(r'bdm-targets', views.BDMTargetViewSet, basename='bdm-targets')
+router.register(r'smart-sales-calls', views.SmartSalesCallViewSet, basename='smart-sales-calls')
+router.register(r'campaign-workspace', views.CampaignWorkspaceViewSet, basename='campaign-workspace')
+router.register(r'customer-categories', views.CustomerCategoryViewSet)
+router.register(r'sales-channels', views.SalesChannelViewSet)
+router.register(r'engagement-tools', views.EngagementToolViewSet)
+router.register(r'activity-planners', views.ActivityPlannerViewSet, basename='activity-planners')
+router.register(r'planner-member-plans', views.PlannerMemberPlanViewSet, basename='planner-member-plans')
+router.register(r'planner-tasks', views.PlannerTaskViewSet, basename='planner-tasks')
+
+
+
 
 urlpatterns = [
+    path('api/run-free-campaign/', views.run_free_campaign, name='run_free_campaign'),
+    path('api/run-agent/', views.trigger_agent, name='run_agent'),
+    path('api/agent-status/', views.agent_status, name='agent_status'),
+    path('api/run-free-campaign/', views.run_free_campaign, name='run_free_campaign'),
     path('admin/', admin.site.urls),
+    path('api/auth/login/', views.LoginView.as_view(), name='auth_login'),
+    path('api/auth/refresh/', views.RefreshAuthTokenView.as_view(), name='auth_refresh_token'),
+    path('api/auth/change-password/', views.ChangePasswordView.as_view(), name='auth_change_password'),
+    path('api/auth/create-user/', views.CreateUserView.as_view(), name='auth_create_user'),
+    path('api/auth/me/', views.me, name='auth_me'),
+    path('api/auth/users/', views.list_users, name='auth_list_users'), 
+    path('api/auth/bootstrap-admin/', views.bootstrap_admin_profile, name='auth_bootstrap_admin'),
     path('api/', include(router.urls)),
 ]
