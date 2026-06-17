@@ -1,75 +1,286 @@
-import React from 'react';
-import { LayoutDashboard, Kanban, Users, BookOpen, CheckSquare, Sparkles, Settings, LogOut } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import type { LucideIcon } from 'lucide-react';
+import {
+  LayoutDashboard,
+  GitBranch,
+  Workflow,
+  CheckSquare,
+  Users,
+  BookOpen,
+  BarChart3,
+  Target,
+  BrainCircuit,
+  TrendingUp,
+  Wand2,
+  CalendarDays,
+  UserPlus,
+  PanelLeftClose,
+  ChevronDown,
+  Settings,
+} from 'lucide-react';
+import { api } from '../Utils/api';
+import { authStore } from '../Utils/auth';
 
-interface SidebarProps {
-  activePage: string;
-  onNavigate: (page: string) => void;
-}
+type NavItem = {
+  path: string;
+  label: string;
+  icon: LucideIcon;
+  bg: string;
+  isNew?: boolean;
+};
 
-export const Sidebar = ({ activePage, onNavigate }: SidebarProps) => {
-  const topMenu = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'pipeline', label: 'Pipeline', icon: Kanban },
-    { id: 'tasks', label: 'My Tasks', icon: CheckSquare },
-    { id: 'contacts', label: 'All Leads', icon: Users },
-    { id: 'playbooks', label: 'Playbooks', icon: BookOpen },
-  ];
+const topNavItems: NavItem[] = [
+  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, bg: 'bg-gradient-to-br from-sky-400 to-blue-600' },
+  { path: '/bdm-targets', label: 'BDM Targets', icon: Target, bg: 'bg-gradient-to-br from-amber-400 to-orange-600' },
+  { path: '/campaign-workspace', label: 'Campaign Workspace', icon: Wand2, bg: 'bg-gradient-to-br from-violet-400 to-purple-700' },
+  { path: '/activity-planner', label: 'Activity Planner', icon: CalendarDays, bg: 'bg-gradient-to-br from-emerald-400 to-green-600', isNew: true },
+  { path: '/pipeline', label: 'Pipeline', icon: GitBranch, bg: 'bg-gradient-to-br from-blue-400 to-blue-700' },
+];
+
+const aiNavItems: NavItem[] = [
+  { path: '/ai-command', label: 'AI Assistant', icon: BrainCircuit, bg: 'bg-gradient-to-br from-pink-400 to-rose-600', isNew: true },
+  { path: '/ai-analytics', label: 'AI Analytics', icon: TrendingUp, bg: 'bg-gradient-to-br from-teal-400 to-cyan-700', isNew: true },
+  { path: '/prospector', label: 'AI Prospector', icon: Target, bg: 'bg-gradient-to-br from-purple-400 to-purple-700' },
+];
+
+const bottomNavItems: NavItem[] = [
+  { path: '/workflows', label: 'Workflows', icon: Workflow, bg: 'bg-gradient-to-br from-yellow-400 to-amber-600' },
+  { path: '/tasks', label: 'Tasks', icon: CheckSquare, bg: 'bg-gradient-to-br from-green-400 to-green-600' },
+  { path: '/contacts', label: 'Contacts', icon: Users, bg: 'bg-gradient-to-br from-cyan-400 to-cyan-700' },
+  { path: '/playbooks', label: 'Playbooks', icon: BookOpen, bg: 'bg-gradient-to-br from-orange-400 to-orange-600' },
+  { path: '/bdm-core', label: 'BDM Dashboard', icon: BarChart3, bg: 'bg-gradient-to-br from-indigo-400 to-blue-700' },
+];
+
+const adminItem: NavItem = {
+  path: '/create-user',
+  label: 'Create User',
+  icon: UserPlus,
+  bg: 'bg-gradient-to-br from-pink-400 to-pink-700',
+};
+
+export const Sidebar: React.FC = () => {
+  const location = useLocation();
+  const [alertCount, setAlertCount] = useState(0);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const currentUser = authStore.getUser();
+  const isAdmin = currentUser?.role === 'admin';
+  const utilityNavItems = isAdmin ? [...bottomNavItems, adminItem] : bottomNavItems;
+
+  const isAiRoute = aiNavItems.some((item) => location.pathname.startsWith(item.path));
+  const [aiOpen, setAiOpen] = useState(() => isAiRoute);
+
+  useEffect(() => {
+    const fetchCount = () => {
+      api.aiUnreadCount().then((d) => setAlertCount(d.unread || 0)).catch(() => {});
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (isAiRoute) setAiOpen(true);
+  }, [isAiRoute]);
+
+  const renderNavItem = (item: NavItem, index: number, nested = false) => {
+    const Icon = item.icon;
+
+    return (
+      <NavLink
+        key={item.path}
+        to={item.path}
+        title={collapsed ? item.label : undefined}
+        style={{ animationDelay: `${0.2 + index * 0.04}s` }}
+        className={({ isActive }) => `
+          group flex items-center gap-3 rounded-xl
+          font-medium text-[13.5px] relative overflow-hidden
+          transition-all duration-200 no-underline
+          animate-[slideInLeft_0.4s_cubic-bezier(0.34,1.2,0.64,1)_both]
+          ${collapsed
+            ? 'w-[46px] h-[44px] mx-auto justify-center p-0'
+            : nested
+              ? 'h-[40px] w-full pl-5 pr-3'
+              : 'h-[46px] w-full px-3'}
+          ${isActive
+            ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-[0_4px_14px_rgba(79,70,229,0.3)]'
+            : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:translate-x-0.5'}
+        `}
+      >
+        {({ isActive }) => (
+          <>
+            <div className={`
+              flex items-center justify-center shrink-0 rounded-[9px]
+              ${nested ? 'w-[28px] h-[28px]' : 'w-[32px] h-[32px]'} text-white
+              shadow-[inset_0_0_0_1px_rgba(255,255,255,0.3)]
+              transition-transform duration-200
+              group-hover:-translate-y-0.5 group-hover:scale-110 group-hover:rotate-1
+              ${isActive ? 'bg-white/25 !transform-none' : item.bg}
+            `}>
+              <Icon size={nested ? 13 : 15} />
+            </div>
+
+            {!collapsed && <span className="truncate">{item.label}</span>}
+
+            {!collapsed && item.isNew && (
+              <span className={`
+                ml-auto text-[8px] font-bold px-1.5 py-0.5 rounded
+                ${isActive ? 'bg-white/25 text-white' : 'bg-indigo-500 text-white'}
+              `}>
+                NEW
+              </span>
+            )}
+
+            {item.path === '/ai-command' && alertCount > 0 && aiOpen && (
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                {alertCount > 9 ? '9+' : alertCount}
+              </span>
+            )}
+          </>
+        )}
+      </NavLink>
+    );
+  };
+
+  const showAiAlertOnParent = alertCount > 0 && (!aiOpen || collapsed);
 
   return (
-    <aside className="w-72 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-300 flex flex-col h-screen shrink-0 border-r border-slate-800/50 relative overflow-hidden">
-      {/* Decorative Glow */}
-      <div className="absolute top-0 left-0 w-full h-40 bg-gradient-to-b from-blue-500/10 to-transparent pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-full h-40 bg-gradient-to-t from-indigo-500/5 to-transparent pointer-events-none" />
+    <aside
+      className={`
+        relative flex flex-col h-full bg-white border-r border-slate-200
+        shadow-[2px_0_16px_rgba(15,23,42,0.07)]
+        transition-all duration-300 ease-in-out overflow-visible
+        ${collapsed ? 'w-[72px]' : 'w-[240px]'}
+      `}
+    >
+      <button
+        onClick={() => setCollapsed((p) => !p)}
+        className={`
+          absolute -right-3.5 top-[34px] -translate-y-1/2 z-50
+          w-7 h-7 flex items-center justify-center
+          bg-white border-[1.5px] border-slate-200 rounded-full
+          text-slate-400 cursor-pointer
+          transition-all duration-300
+          hover:text-indigo-600 hover:border-indigo-300
+          hover:shadow-[0_2px_12px_rgba(79,70,229,0.25)]
+          ${collapsed ? 'rotate-180' : ''}
+        `}
+      >
+        <PanelLeftClose size={15} />
+      </button>
 
-      {/* Logo */}
-      <div className="p-6 relative z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Sparkles size={20} className="text-white" />
+      <div className={`
+        flex items-center border-b border-slate-100 shrink-0 h-[68px]
+        ${collapsed ? 'justify-center px-0' : 'px-5'}
+      `}>
+        {!collapsed && (
+          <div className="flex flex-col gap-0.5 overflow-hidden w-full items-center">
+            <div className="text-[36px] leading-none font-black tracking-[2px] text-slate-900 whitespace-nowrap text-center">
+              <span className="text-blue-800">BD</span>
+              <span className="text-pink-600">CRM</span>
+            </div>
+            <div className="text-[9px] font-bold text-slate-400 tracking-[1.8px] uppercase text-center">
+              AI-Powered CRM
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">BD<span className="text-blue-400">CRM</span></h1>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest">Sales Intelligence</p>
+        )}
+
+        {collapsed && (
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+            <span className="text-white text-[11px] font-black">BD</span>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-4 space-y-1 mt-4 relative z-10">
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-4 mb-3">Main Menu</p>
-        {topMenu.map((item) => {
-          const isActive = activePage === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative overflow-hidden ${
-                isActive
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/25'
-                  : 'hover:bg-slate-800/60 hover:text-white text-slate-400'
-              }`}
-            >
-              {isActive && <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent pointer-events-none" />}
-              <item.icon size={20} className={isActive ? 'text-white' : 'text-slate-500 group-hover:text-blue-400 transition-colors'} />
-              <span className="font-medium text-sm">{item.label}</span>
-            </button>
-          );
-        })}
+      <nav className="flex-1 overflow-y-auto overflow-x-visible px-2.5 py-3 space-y-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {topNavItems.map((item, i) => renderNavItem(item, i))}
+
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={() => setAiOpen((prev) => !prev)}
+            title={collapsed ? 'AI Features' : undefined}
+            className={`
+              group w-full flex items-center gap-3 rounded-xl
+              font-medium text-[13.5px] relative overflow-hidden
+              transition-all duration-200
+              ${collapsed ? 'w-[46px] h-[44px] mx-auto justify-center p-0' : 'h-[46px] px-3'}
+              ${isAiRoute
+                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-[0_4px_14px_rgba(79,70,229,0.3)]'
+                : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:translate-x-0.5'}
+            `}
+          >
+            <div className={`
+              flex items-center justify-center shrink-0 rounded-[9px]
+              w-[32px] h-[32px] text-white
+              shadow-[inset_0_0_0_1px_rgba(255,255,255,0.3)]
+              transition-transform duration-200
+              group-hover:-translate-y-0.5 group-hover:scale-110 group-hover:rotate-1
+              ${isAiRoute ? 'bg-white/25 !transform-none' : 'bg-gradient-to-br from-fuchsia-500 to-violet-600'}
+            `}>
+              <BrainCircuit size={15} />
+            </div>
+
+            {!collapsed && <span className="truncate">AI Features</span>}
+
+            {!collapsed && (
+              <ChevronDown
+                size={15}
+                className={`ml-auto transition-transform duration-200 ${aiOpen ? 'rotate-0' : '-rotate-90'}`}
+              />
+            )}
+
+            {showAiAlertOnParent && (
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                {alertCount > 9 ? '9+' : alertCount}
+              </span>
+            )}
+          </button>
+
+          {aiOpen && (
+            <div className={`${collapsed ? 'space-y-1 mt-1' : 'space-y-1 mt-1 pl-2 border-l-2 border-indigo-100 ml-2'}`}>
+              {aiNavItems.map((item, i) => renderNavItem(item, topNavItems.length + i, true))}
+            </div>
+          )}
+        </div>
+
+        {utilityNavItems.map((item, i) => renderNavItem(item, topNavItems.length + aiNavItems.length + i + 1))}
       </nav>
 
-      {/* Bottom Profile Section */}
-      <div className="p-4 border-t border-slate-800/50 relative z-10">
-        <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/40 transition cursor-pointer">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white font-bold text-sm shadow-lg">
-            BD
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-white">BD Agent</p>
-            <p className="text-xs text-slate-500">Sales Team</p>
-          </div>
-          <Settings size={16} className="text-slate-600 hover:text-slate-400 transition" />
-        </div>
+      <div className={`shrink-0 border-t border-slate-100 p-2 ${collapsed ? 'pb-3' : 'pb-4'}`}>
+        <NavLink
+          to="/settings/change-password"
+          title={collapsed ? 'Settings' : undefined}
+          className={({ isActive }) => `
+            group w-full flex items-center gap-3 rounded-xl
+            font-medium text-[13.5px] relative overflow-hidden
+            transition-all duration-200 no-underline
+            ${collapsed ? 'w-[46px] h-[44px] mx-auto justify-center p-0' : 'h-[46px] px-3'}
+            ${isActive
+              ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white shadow-[0_4px_14px_rgba(51,65,85,0.28)]'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'}
+          `}
+        >
+          {({ isActive }) => (
+            <>
+              <div className={`
+                flex items-center justify-center shrink-0 rounded-[9px]
+                w-[32px] h-[32px] text-white
+                shadow-[inset_0_0_0_1px_rgba(255,255,255,0.3)]
+                transition-transform duration-200
+                group-hover:-translate-y-0.5 group-hover:scale-110
+                ${isActive ? 'bg-white/25' : 'bg-gradient-to-br from-slate-500 to-slate-700'}
+              `}>
+                <Settings size={15} />
+              </div>
+              {!collapsed && <span className="truncate">Settings</span>}
+            </>
+          )}
+        </NavLink>
       </div>
     </aside>
   );
 };
+
+export default Sidebar;
