@@ -11,9 +11,35 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+import os
+
+import anthropic   
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_dotenv(dotenv_path: Path) -> None:
+    if not dotenv_path.exists():
+        return
+    for raw in dotenv_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'").strip('"')
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv(BASE_DIR / ".env")
+
+
+def _csv_env(name: str, default: list[str]) -> list[str]:
+    raw_value = os.getenv(name, "")
+    if not raw_value.strip():
+        return default
+    return [part.strip() for part in raw_value.split(",") if part.strip()]
 
 
 # Quick-start development settings - unsuitable for production
@@ -25,8 +51,20 @@ SECRET_KEY = 'django-insecure-ujsoj4d(t-tiud8l4m%31)&j6@y-9y-qjfo)cxx(i5@!f$)156
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-CORS_ALLOW_ALL_ORIGINS = True
+ALLOWED_HOSTS = _csv_env("DJANGO_ALLOWED_HOSTS", ["127.0.0.1", "localhost"])
+
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = _csv_env(
+    "DJANGO_CORS_ALLOWED_ORIGINS",
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
+)
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = _csv_env("DJANGO_CSRF_TRUSTED_ORIGINS", CORS_ALLOWED_ORIGINS)
 
 # Application definition
 
@@ -37,12 +75,15 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'crm',
+    'crm.apps.CrmConfig',
     'rest_framework',
+    'rest_framework_simplejwt',
     'corsheaders',
+    'django_crontab',
 ]
 
 MIDDLEWARE = [
+    'crm.tenancy.CompanyContextMiddleware',
     'corsheaders.middleware.CorsMiddleware',
 
     'django.middleware.security.SecurityMiddleware',
@@ -73,18 +114,43 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'bdcrm.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    "default": {
+        "ENGINE": os.getenv("DATABASE_ENGINE", "django.db.backends.postgresql"),
+        "NAME": os.getenv("DATABASE_NAME", "BDCRM"),
+        "USER": os.getenv("DATABASE_USER", "postgres"),
+        "PASSWORD": os.getenv("DATABASE_PASSWORD", "admin"),
+        "HOST": os.getenv("DATABASE_HOST", "127.0.0.1"),
+        "PORT": os.getenv("DATABASE_PORT", "5432"),
+    },
+    "contacts_db": {
+        "ENGINE": os.getenv("CONTACTS_DATABASE_ENGINE", os.getenv("DATABASE_ENGINE", "django.db.backends.postgresql")),
+        # Contacts share the primary BDCRM database unless a separate contacts
+        # database is explicitly configured. The previous fallback referenced
+        # a non-existent `BDCRM_DB` database during planner assignment.
+        "NAME": os.getenv("DATABASE_NAME", "BDCRM"),
+        "USER": os.getenv("CONTACTS_DATABASE_USER", os.getenv("DATABASE_USER", "postgres")),
+        "PASSWORD": os.getenv("CONTACTS_DATABASE_PASSWORD", os.getenv("DATABASE_PASSWORD", "admin")),
+        "HOST": os.getenv("CONTACTS_DATABASE_HOST", os.getenv("DATABASE_HOST", "127.0.0.1")),
+        "PORT": os.getenv("CONTACTS_DATABASE_PORT", os.getenv("DATABASE_PORT", "5432")),
+    },
 }
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     },
+#     'contacts_db': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     },
+# }
 
+DATABASE_ROUTERS = ['db_router.ContactRouter']
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
@@ -115,8 +181,88 @@ USE_I18N = True
 
 USE_TZ = True
 
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'crm.tenancy.CompanyJWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+}
+
+# Company Portal is the trusted SSO authority. These settings must match the
+# portal backend's shared secret in each deployed environment.
+# Keep the standalone development default aligned with Company Portal. A real
+# deployment must provide PORTAL_SSO_SHARED_SECRET to every backend.
+PORTAL_SSO_SHARED_SECRET = os.getenv('PORTAL_SSO_SHARED_SECRET', 'change-this-local-shared-secret')
+BDCRM_DASHBOARD_SECRET = os.getenv('BDCRM_DASHBOARD_SECRET', '')
+PORTAL_SSO_EXCHANGE_URL = os.getenv(
+    'PORTAL_SSO_EXCHANGE_URL', 'http://127.0.0.1:8004/api/portal/sso/exchange/'
+)
+PORTAL_SSO_TIMEOUT_SECONDS = int(os.getenv('PORTAL_SSO_TIMEOUT_SECONDS', '10'))
+# These must be configured together for the address where this CRM is served.
+# OAuth authorization codes are bound to the redirect URI used at login, so a
+# stale LAN address here makes every otherwise-valid code fail at exchange.
+# In Docker, use the NexusOne backend exposed by this Windows host.  The
+# browser login on .94 is served by this instance; exchanging against a .56
+# server rejects codes because authorization codes are stored per instance.
+NEXUS_SSO_TOKEN_URL = os.getenv('NEXUS_SSO_TOKEN_URL', 'http://host.docker.internal:8005/api/sso/token/')
+NEXUS_SSO_CLIENT_ID = os.getenv('NEXUS_SSO_CLIENT_ID', 'LklOUrLObOjzgvaK4CLM2uvcBP46qSr4')
+NEXUS_SSO_CLIENT_SECRET = os.getenv('NEXUS_SSO_CLIENT_SECRET', 'nexus-bdcrm-direct-2026-8Vr3kN6mQp5Ls2Tx')
+NEXUS_SSO_REDIRECT_URI = os.getenv('NEXUS_SSO_REDIRECT_URI', 'http://192.168.1.94:8003')
+NEXUS_SSO_REDIRECT_URIS = _csv_env(
+    'NEXUS_SSO_REDIRECT_URIS',
+    [
+        NEXUS_SSO_REDIRECT_URI,
+        'http://192.168.1.56:8003',
+        'https://vbsagent.tail9c1eb6.ts.net:6004/',
+    ],
+)
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+# settings.py
+GREEN_API_ID = os.getenv("GREEN_API_ID", "")
+GREEN_API_TOKEN = os.getenv("GREEN_API_TOKEN", "")
+APOLLO_API_KEY = os.getenv("APOLLO_API_KEY", "")
+GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID", "")
+
+CONTACT_SYNC_SOURCE = os.getenv("CONTACT_SYNC_SOURCE", "bdcrm")
+CONTACT_SYNC_TARGET_URL = os.getenv(
+    "CONTACT_SYNC_TARGET_URL",
+    "http://127.0.0.1:8003/api/integrations/sync/contact/",
+)
+CONTACT_SYNC_TARGET_URLS = os.getenv(
+    "CONTACT_SYNC_TARGET_URLS",
+    "http://127.0.0.1:8003/api/integrations/sync/contact/,"
+    "http://127.0.0.1:8001/api/integrations/sync/contact/",
+)
+# Planner assignments are consumed only by Marketing CRM.  Keep this separate
+# from contact sync: the latter can have multiple peer CRMs, while an
+# assignment must never be posted to a frontend/non-Marketing endpoint.
+CONTACT_ASSIGNMENT_SYNC_TARGET_URLS = os.getenv(
+    "CONTACT_ASSIGNMENT_SYNC_TARGET_URLS",
+    "http://127.0.0.1:8000/api/integrations/sync/tele-assignment/",
+)
+CONTACT_SYNC_API_TOKEN = os.getenv(
+    "CONTACT_SYNC_API_TOKEN",
+    "bdcrm-contact-sync-local",
+)
+# Contact-sync requests use a shared integration token rather than a portal
+# JWT, so they need an explicitly configured tenant context.
+CONTACT_SYNC_TENANT_COMPANY_ID = int(os.getenv("CONTACT_SYNC_TENANT_COMPANY_ID", "1"))
+CONTACT_SYNC_TIMEOUT_SECONDS = float(os.getenv("CONTACT_SYNC_TIMEOUT_SECONDS", "5"))
+WISHLIST_SYNC_API_TOKEN = os.getenv("WISHLIST_SYNC_API_TOKEN", "")
+
+
+# Additional Tailscale HTTPS entry point; retain existing LAN access.
+ALLOWED_HOSTS += ['vbsagent.tail9c1eb6.ts.net', '100.106.13.10']
+CSRF_TRUSTED_ORIGINS += ['https://vbsagent.tail9c1eb6.ts.net:6004']
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
